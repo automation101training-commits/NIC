@@ -1,4 +1,5 @@
 type LooseProfile = Record<string, any> | null
+type LooseMembership = Record<string, any> | null
 
 const ADMIN_ROLE_VALUES = new Set(["admin", "superadmin", "owner"])
 
@@ -39,6 +40,8 @@ export const useAdmin = () => {
 
   const adminProfile = useState<LooseProfile>("admin_profile", () => null)
   const adminProfileLoaded = useState<boolean>("admin_profile_loaded", () => false)
+  const adminMembership = useState<LooseMembership>("admin_membership", () => null)
+  const adminMembershipLoaded = useState<boolean>("admin_membership_loaded", () => false)
 
   const adminEmails = computed(() =>
     String(config.public.ADMIN_EMAILS || "")
@@ -63,7 +66,50 @@ export const useAdmin = () => {
   })
 
   const profileIsAdmin = computed(() => getProfileAdminState(adminProfile.value))
-  const isAdmin = computed(() => sessionIsAdmin.value || profileIsAdmin.value)
+  const membershipIsAdmin = computed(() => {
+    const membership = adminMembership.value
+    if (!membership) return false
+    if (String(membership.status || "").toLowerCase() !== "active") return false
+
+    const level = membership.level || null
+    return (
+      level?.can_access_admin === true ||
+      hasAdminRole(level?.code) ||
+      hasAdminRole(level?.name)
+    )
+  })
+
+  const isAdmin = computed(() => sessionIsAdmin.value || membershipIsAdmin.value || profileIsAdmin.value)
+
+  async function loadAdminMembership(force = false) {
+    if (!force && adminMembershipLoaded.value) return adminMembership.value
+
+    const uid = auth.session.value?.user?.id
+    if (!uid) {
+      adminMembership.value = null
+      adminMembershipLoaded.value = true
+      return null
+    }
+
+    try {
+      const { data, error } = await $supabase
+        .from("customer_level_memberships")
+        .select("status, level:customer_levels(code,name,can_access_admin)")
+        .eq("user_id", uid)
+        .eq("status", "active")
+        .maybeSingle()
+
+      if (error) throw error
+
+      adminMembership.value = data || null
+      adminMembershipLoaded.value = true
+      return data || null
+    } catch {
+      adminMembership.value = null
+      adminMembershipLoaded.value = true
+      return null
+    }
+  }
 
   async function loadAdminProfile(force = false) {
     if (!force && adminProfileLoaded.value) return adminProfile.value
@@ -101,10 +147,13 @@ export const useAdmin = () => {
     if (!auth.session.value) {
       adminProfile.value = null
       adminProfileLoaded.value = true
+      adminMembership.value = null
+      adminMembershipLoaded.value = true
       return false
     }
 
     if (!sessionIsAdmin.value) {
+      await loadAdminMembership(force)
       await loadAdminProfile(force)
     }
 
@@ -113,6 +162,7 @@ export const useAdmin = () => {
 
   return {
     adminProfile,
+    adminMembership,
     isAdmin,
     refreshAdminState,
   }
