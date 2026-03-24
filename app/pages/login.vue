@@ -22,7 +22,7 @@
               type="email"
               autocomplete="username"
               placeholder="Username or Email"
-              class="w-full h-11 rounded-lg bg-white border border-slate-300 px-4
+              class="w-full h-11 rounded-lg bg-white border border-slate-300 px-4 text-slate-900 placeholder:text-slate-400
                      focus:outline-none focus:ring-2 focus:ring-red-200 focus:border-red-400"
               :disabled="loading"
             />
